@@ -6,9 +6,13 @@ A background-task watchboard for the [Hermes Agent](https://github.com/NousResea
 
 ## Screenshots
 
-![TaskWatch watchboard pane](screenshots/watchboard.png)
+<img src="screenshots/watchboard.jpg" width="720" alt="TaskWatch watchboard pane">
 
-![Expanded live output](screenshots/expanded-output.png)
+*The watchboard pane: one row per dispatched background process, with runtime, status and the latest output line.*
+
+<img src="screenshots/expanded-output.jpg" width="420" alt="Expanded live output">
+
+*Expanded row: the append-only live tail — scrollable history while the task keeps running.*
 
 ## Why
 
