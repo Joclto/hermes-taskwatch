@@ -47,6 +47,19 @@ No build step, no dependencies, nothing to compile.
 
 **Privacy:** everything is local. The pane reads the process projection for the chat you focused; nothing is written, exported or sent anywhere; no model tokens are spent.
 
+## Watching a dispatched Claude Code task
+
+`claude -p` holds its output until the end, so a dispatched task looks silent in any watchboard. Stream it instead, piped through the bundled pretty-filter:
+
+```bash
+claude -p "task" \
+  --output-format stream-json --verbose \
+  --dangerously-skip-permissions \
+| python tools/cc-stream-pretty.py
+```
+
+The filter renders one readable line per completed block — `[think]`, `[tool]`, `[result]`, `[say]`, `[done]` — in real time, which the TaskWatch tail then surfaces live. Leave `--include-partial-messages` off: token-level deltas would flood a rolling tail. The full session still lands in `~/.claude/projects/**/**.jsonl`, and `claude agents` / `claude attach <id>` cover the interactive replay.
+
 ## Scope & roadmap
 
 - v1 (this repo): focused-chat roster, silence heartbeat, exit notifications, stop.
