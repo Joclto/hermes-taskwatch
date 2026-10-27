@@ -1,6 +1,6 @@
 name: taskwatch
 repo: https://github.com/Joclto/hermes-taskwatch
-sha: SHA_PLACEHOLDER
+sha: 745c2cbadb2bfadbb5affcecb046421fc80fd464
 subdir: .
 title: TaskWatch
 description: >-
