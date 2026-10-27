@@ -1,0 +1,14 @@
+name: taskwatch
+label: TaskWatch
+version: 0.1.1
+author: Joclto
+homepage: https://github.com/Joclto/hermes-taskwatch
+description: >
+  Background-task watchboard for the Hermes Desktop status bar and a side pane.
+  Every process the focused chat dispatched through terminal(background=true) —
+  claude, opencode, codex, a build, anything — with a live output tail, runtime,
+  a silence heartbeat, a two-click stop, and OS notifications when a task goes
+  quiet past a configurable threshold or exits. Agent-agnostic by construction:
+  it renders the gateway's own process.list projection for the focused session.
+  Desktop-only (desktop/plugin.js); no agent tools, hooks or env vars. Local-only.
+tags: [desktop, monitor, terminal, background-tasks]
