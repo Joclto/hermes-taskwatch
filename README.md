@@ -4,6 +4,12 @@ A background-task watchboard for the [Hermes Agent](https://github.com/NousResea
 
 > 你派出去的后台编码代理（cc / opencode / codex / 任何终端进程）在干什么、有没有卡死，一块面板看清。
 
+## Screenshots
+
+![TaskWatch watchboard pane](screenshots/watchboard.png)
+
+![Expanded live output](screenshots/expanded-output.png)
+
 ## Why
 
 Dispatching a coding agent in the background answers "is it running?" but not **"what is it doing, is it stuck, did it finish?"** — and each agent has its own transcript format. TaskWatch watches at the **terminal-process layer** instead: it renders the gateway's own `process.list` projection for the focused chat, so it is agent-agnostic by construction.
