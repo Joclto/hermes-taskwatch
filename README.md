@@ -20,6 +20,7 @@ Dispatching a coding agent in the background answers "is it running?" but not **
 
 ## Features
 
+- **All-chats roster** — by default the pane lists **every live chat's** background tasks in one place, grouped by conversation (chat title + running count), with an *All chats / This chat* filter. The status-bar chip and silence alerts are global too.
 - **Live roster pane** — one row per background process: command, runtime, last output line, status dot
 - **Silence heartbeat** — a running task whose output stops changing shows `silent N min`; configurable threshold (5/10/20/30 min)
 - **OS notifications** — task goes silent past the threshold, or exits (success/failure by exit code) → native toast (fires while you are away from Hermes; in-app toast otherwise)
@@ -66,8 +67,8 @@ The filter renders one readable line per completed block — `[think]`, `[tool]`
 
 ## Scope & roadmap
 
-- v1 (this repo): focused-chat roster, silence heartbeat, exit notifications, stop.
-- Candidate next: all-sessions roster (per profile), loop detection (same tool + same arguments repeated, as `hermes-monitor` does for kanban workers), click-through to the matching terminal tab, catalog submission.
+- v0.2 (this repo): all-chats roster with per-chat grouping and the All/This-chat filter; global chip and alerts.
+- Candidate next: loop detection (same tool + same arguments repeated, as `hermes-monitor` does for kanban workers), click-through to the matching terminal tab, opt-in tee-to-file dispatch for full history beyond the 32 KB projection.
 
 ## License
 
