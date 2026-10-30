@@ -295,11 +295,14 @@ function Row({ p, t, now, onKill, killing, expanded, onToggle }) {
         jsx('div', {
           ref: preRef,
           className: cn(
-            'mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap break-words rounded',
+            'mt-1 rounded',
             'border border-(--ui-stroke-secondary) p-2 font-mono text-[0.6875rem] leading-relaxed',
             'text-(--ui-text-secondary)'
           ),
-          style: { contain: 'content' },
+          style: {
+            contain: 'content', maxHeight: '240px', overflowY: 'auto',
+            whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
+          },
           onScroll: (e) => {
             const el = e.currentTarget
             const feed = feedRef.current
@@ -411,6 +414,7 @@ function Pane() {
 
   return jsxs('div', {
     className: 'flex h-full flex-col gap-2 p-3 text-sm',
+    style: { overflowY: 'auto' },
     children: [
       jsxs('div', { className: 'flex items-center justify-between gap-2', children: [
         jsx('div', { className: 'shrink-0 font-medium', children: t('paneTitle') }),
