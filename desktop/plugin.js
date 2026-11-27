@@ -8,8 +8,9 @@
  * heartbeat and OS notifications; the chip now counts every session's
  * running tasks and its silence state is global.
  *
- * Data source: the gateway's own session.list + process.list session RPCs —
- * the same projections the desktop app renders. No network, no model calls,
+ * Data source: the gateway's own session.active_list + process.list session
+ * RPCs — the same projections the desktop app renders. The roster is keyed by
+ * the live runtime id (row.id); process.list requires that exact id. No network, no model calls,
  * nothing leaves the machine. Stop/kill goes through the gateway's
  * process.kill verb and only ever reaches processes a chat owns.
  *
@@ -318,25 +319,38 @@ function Row({ p, t, now, onKill, killing, expanded, onToggle }) {
 }
 
 // All-sessions roster: live sessions -> each session's own process.list
-// projection -> flat rows carrying their chat identity. A session that dies
-// mid-poll simply contributes no rows (one dead chat must not blank the
-// whole watchboard).
-async function fetchAllRows() {
-  const listing = await host.request('session.list', {})
-  const sessions = (listing?.sessions ?? []).slice(0, MAX_SESSION_FANOUT)
+// projection -> flat rows carrying their chat identity. session.active_list
+// rows expose the live runtime id as `id`; that is also what process.list
+// expects as session_id. A session that dies mid-poll contributes no rows —
+// but that is recorded as a partial failure, never as "zero tasks".
+async function fetchAllRows(profile) {
+  const scope = profile ? { profile } : {}
+  let sessions
+  try {
+    const listing = await host.request('session.active_list', scope)
+    if (!Array.isArray(listing?.sessions)) throw new Error('session.active_list returned no sessions array')
+    sessions = listing.sessions.slice(0, MAX_SESSION_FANOUT)
+  } catch (err) {
+    // The roster itself is unavailable — callers must not render "empty".
+    return { rows: [], rosterFailed: true, partialFailed: false }
+  }
   const results = await Promise.all(sessions.map(async (s) => {
     try {
-      const r = await host.request('process.list', { session_id: s.session_id })
-      return { s, processes: r?.processes ?? [] }
+      if (typeof s.id !== 'string' || s.id === '') throw new Error('session row has no live id')
+      const r = await host.request('process.list', { session_id: s.id, ...scope })
+      if (!Array.isArray(r?.processes)) throw new Error('process.list returned no processes array')
+      return { s, processes: r.processes, failed: false }
     } catch (err) {
-      return { s, processes: [] }
+      return { s, processes: [], failed: true }
     }
   }))
   const out = []
-  for (const { s, processes } of results) {
-    for (const p of processes) out.push({ p, chatId: s.session_id, title: s.title || '' })
+  let partialFailed = false
+  for (const { s, processes, failed } of results) {
+    if (failed) partialFailed = true
+    for (const p of processes) out.push({ p, chatId: s.id, title: s.title || '' })
   }
-  return out
+  return { rows: out, rosterFailed: false, partialFailed }
 }
 
 function groupRows(rows) {
@@ -364,6 +378,8 @@ function groupRows(rows) {
 function Pane() {
   const t = usePluginI18n(ID)
   const sessionId = useValue(host.state.focusedSessionId)
+  const connectionId = useValue(host.state.connectionId)
+  const profile = useValue(host.state.profile)
   const [thresholdMin, setThresholdMin] = useState(_thresholdMin)
   const [armingKill, setArmingKill] = useState(null)   // process id awaiting confirm
   const [expandedId, setExpandedId] = useState(null)   // process id with open output view
@@ -371,11 +387,13 @@ function Pane() {
   const [, forceTick] = useState(0)                    // re-render for heartbeat text aging
 
   const q = useQuery({
-    queryKey: ['taskwatch-all'],
-    queryFn: fetchAllRows,
+    queryKey: ['taskwatch-all', connectionId, profile],
+    queryFn: () => fetchAllRows(profile),
     refetchInterval: POLL_MS,
   })
-  const rows = q.data ?? []
+  const rows = q.data?.rows ?? []
+  const rosterFailed = q.data?.rosterFailed ?? false
+  const partialFailed = q.data?.partialFailed ?? false
   const now = Date.now()
   useTracking(rows, t)
 
@@ -441,12 +459,17 @@ function Pane() {
 
       q.isLoading && jsx('div', { className: 'text-(--ui-text-tertiary)', children: '…' }),
 
-      !q.isLoading && q.error && jsx('div', {
+      !q.isLoading && (q.error || rosterFailed) && jsx('div', {
         className: 'text-(--ui-text-tertiary)',
         children: t('error'),
       }),
 
-      !q.error && !q.isLoading && groups.length === 0 && jsx('div', {
+      !q.isLoading && !q.error && !rosterFailed && partialFailed && jsx('div', {
+        className: 'text-(--ui-text-tertiary)',
+        children: t('partial'),
+      }),
+
+      !q.error && !rosterFailed && !partialFailed && !q.isLoading && groups.length === 0 && jsx('div', {
         className: 'text-(--ui-text-tertiary)',
         children: t('empty'),
       }),
@@ -481,12 +504,14 @@ function Pane() {
 
 function Chip() {
   const t = usePluginI18n(ID)
+  const connectionId = useValue(host.state.connectionId)
+  const profile = useValue(host.state.profile)
   const q = useQuery({
-    queryKey: ['taskwatch-all'],
-    queryFn: fetchAllRows,
+    queryKey: ['taskwatch-all', connectionId, profile],
+    queryFn: () => fetchAllRows(profile),
     refetchInterval: POLL_MS,
   })
-  const rows = q.data ?? []
+  const rows = q.data?.rows ?? []
   useTracking(rows, t)   // keep notifications firing while the pane's tab is inactive
   const now = Date.now()
   const running = rows.filter((r) => r.p.status !== 'exited')
@@ -537,7 +562,8 @@ export default {
         untitled: '(untitled chat)',
         noSession: 'Open a chat to see its background tasks.',
         empty: 'No background tasks right now.',
-        error: 'Could not read the process list.',
+        error: 'Background task data is unavailable right now.',
+        partial: 'Some chats could not be read — showing the rest.',
         running: 'running',
         exited: 'exited',
         active: 'outputting',
@@ -565,7 +591,8 @@ export default {
         untitled: '（未命名会话）',
         noSession: '打开一个会话以查看它的后台任务。',
         empty: '当前没有后台任务。',
-        error: '无法读取进程列表。',
+        error: '暂时无法获取后台任务数据。',
+        partial: '部分会话读取失败——已显示其余任务。',
         running: '运行中',
         exited: '已退出',
         active: '输出中',
