@@ -1,0 +1,108 @@
+name: auto-release
+
+# 每次合并到 main 自动发版（小项目策略：每次合并都发）
+#   feat → 小版本 +1 | fix → 补丁号 +1 | feat! / BREAKING CHANGE → 大版本 +1
+#   其余类型（chore/docs/ci/refactor/test…）不发版
+# 同步更新：plugin.yaml 的 version、catalog/taskwatch.yaml 的 version 与 sha
+# 产出：版本提交 + pin 提交 + tag vX.Y.Z + GitHub Release（含提交清单）
+# 防循环：发版提交（chore(release)）与机器人推送不再触发
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >
+      github.event.head_commit.author.name != 'github-actions[bot]' &&
+      !startsWith(github.event.head_commit.message, 'chore(release)')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 计算新版本
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          cur=$(grep -E '^version:' plugin.yaml | head -1 | sed -E 's/^version:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/')
+          last=$(git tag --list 'v*' --sort=-v:refname | head -1 || true)
+          if [ -n "$last" ]; then
+            range="${last}..HEAD"
+            msgs=$(git log --pretty=%s "$range")
+          else
+            range="HEAD"
+            msgs=""   # 没有任何 tag：从 plugin.yaml 当前版本起做补丁升级
+          fi
+          bump=none
+          if echo "$msgs" | grep -Eq '^[a-z]+(\([^)]+\))?!:|BREAKING CHANGE'; then bump=major
+          elif echo "$msgs" | grep -Eq '^feat(\([^)]+\))?:'; then bump=minor
+          elif echo "$msgs" | grep -Eq '^fix(\([^)]+\))?:'; then bump=patch
+          elif [ -z "$last" ]; then bump=patch
+          fi
+          if [ "$bump" = none ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "自 $last 以来没有 feat/fix 提交，不发版"
+            exit 0
+          fi
+          IFS='.' read -r MA MI PA <<< "$cur"
+          case "$bump" in
+            major) MA=$((MA+1)); MI=0; PA=0 ;;
+            minor) MI=$((MI+1)); PA=0 ;;
+            patch) PA=$((PA+1)) ;;
+          esac
+          new="${MA}.${MI}.${PA}"
+          {
+            echo "version=$new"
+            echo "last=$last"
+            echo "range=$range"
+          } >> "$GITHUB_OUTPUT"
+          git log --pretty='- %s (%h)' "$range" > "$RUNNER_TEMP/notes.md"
+          echo "版本: $cur -> $new ($bump)，范围: $range"
+
+      - name: 配置 git
+        if: steps.ver.outputs.skip != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: 提交版本号 + catalog pin
+        if: steps.ver.outputs.skip != 'true'
+        id: bump
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.version }}"
+          sed -i -E "s/^version:[[:space:]]*.*/version: $v/" plugin.yaml
+          sed -i -E "s/^version:[[:space:]]*\"[^\"]*\"/version: \"$v\"/" catalog/taskwatch.yaml
+          git add plugin.yaml catalog/taskwatch.yaml
+          git commit -m "chore(release): v$v"
+          sha=$(git rev-parse HEAD)
+          # catalog 的 sha 钉到上面这个含新版本号的提交（单独一笔，避免 amend 改变 sha）
+          sed -i -E "s|^sha:[[:space:]]*[0-9a-f]{40}|sha: $sha|" catalog/taskwatch.yaml
+          git add catalog/taskwatch.yaml
+          git commit -m "chore(release): pin catalog sha to v$v"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: 推送 + 打 tag + 发 Release
+        if: steps.ver.outputs.skip != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.version }}"
+          git push origin HEAD:main
+          git tag "v$v"
+          git push origin "v$v"
+          gh release create "v$v" --title "v$v" --notes-file "$RUNNER_TEMP/notes.md"
+          echo "已发布 v$v，catalog pin = ${{ steps.bump.outputs.sha }}"
